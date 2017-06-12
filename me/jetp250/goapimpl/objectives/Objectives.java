@@ -13,21 +13,10 @@ public enum Objectives {
 			return new ObjectiveCutTreesNew(this.getPriority(), creature);
 		}
 	};
-	//
-	//	public Objectives setInt(final DataTypes type, final int amount) {
-	//		if (this.intData == null) {
-	//			this.intData = new int[4];
-	//		}
-	//		this.intData[type.index] = amount;
-	//		return this;
-	//	}
 
 	public abstract Objective create(final EntityCreature creature);
 
 	private final Priority priority;
-	//	private int[] intData;
-	//	private double[] doubleData;
-	//	private Object[] objectData;
 
 	private Objectives(final Priority priority) {
 		this.priority = priority;
