@@ -7,7 +7,6 @@ import java.util.List;
 
 import org.bukkit.Bukkit;
 
-import me.jetp250.goapimpl.GOAPImplMain;
 import me.jetp250.goapimpl.entities.Human;
 import me.jetp250.goapimpl.utilities.MathHelper;
 import net.minecraft.server.v1_12_R1.BlockPosition;
@@ -31,10 +30,7 @@ public class Village {
 		this.world = (WorldServer) world;
 		this.id = Village.LAST_ID++ + 1;
 		Village.VILLAGES.put(this.id, this);
-		Bukkit.getScheduler().runTask(GOAPImplMain.getPlugin(), () -> {
-			Bukkit.broadcastMessage("\u00a7aVillage formed! Residents: " + this.villagers.size() + ", #" + this.id);
-			Bukkit.broadcastMessage("\u00a7aVillage location: " + locX + ", " + world.c(this.locX, this.locZ) + ", " + locZ);
-		});
+		Bukkit.broadcastMessage("\u00a7aVillage formed at " + locX + ", " + world.c(this.locX, this.locZ) + ", " + locZ);
 	}
 
 	public Village(final BlockPosition location, final World world) {
