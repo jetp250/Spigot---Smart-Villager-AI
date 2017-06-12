@@ -1,4 +1,4 @@
-package me.jetp250.goapimpl.objectives;
+package me.jetp250.goapimpl.objectives.lumberjack;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -11,6 +11,8 @@ import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 
 import me.jetp250.goapimpl.entities.Human;
+import me.jetp250.goapimpl.objectives.Objective;
+import me.jetp250.goapimpl.objectives.common.ObjectiveBuildPath;
 import me.jetp250.goapimpl.utilities.Debug;
 import me.jetp250.goapimpl.utilities.MathHelper;
 import net.minecraft.server.v1_12_R1.Block;
@@ -22,7 +24,7 @@ import net.minecraft.server.v1_12_R1.IBlockData;
 import net.minecraft.server.v1_12_R1.World;
 import net.minecraft.server.v1_12_R1.WorldServer;
 
-public class ObjectiveCutTreesNew extends Objective {
+public class ObjectiveCutTrees extends Objective {
 
 	private static final int SEARCH_RADIUS = 15;
 	private static final EnumDirection[] LOOKUP_DIRECTIONS;
@@ -41,7 +43,7 @@ public class ObjectiveCutTreesNew extends Objective {
 	private Objective ordered;
 	private final Human human;
 
-	public ObjectiveCutTreesNew(final Priority priority, final EntityCreature entity) {
+	public ObjectiveCutTrees(final Priority priority, final EntityCreature entity) {
 		super(priority, entity, (e) -> e instanceof Human);
 		this.completed = false;
 		this.start = new BlockPosition(entity);
@@ -50,7 +52,7 @@ public class ObjectiveCutTreesNew extends Objective {
 
 	@Override
 	public void update() {
-		if (ordered.completed()) {
+		if (ordered != null && ordered.completed()) {
 			ordered = null;
 		}
 		if (this.path != null) {
@@ -81,7 +83,6 @@ public class ObjectiveCutTreesNew extends Objective {
 			entity.getControllerLook().a(this.tree.getX(), entity.locX - 2, this.tree.getZ(), 30, 30);
 			entity.motX = 0;
 			entity.motZ = 0;
-			Debug.b("Pillar size: " + this.pillar.size() + " block(s)");
 			for (int i = this.pillar.size() - 1; i > -1; --i) {
 				final BlockPosition next = this.pillar.get(i);
 				Block block = entity.getWorld().getType(next).getBlock();
@@ -92,18 +93,14 @@ public class ObjectiveCutTreesNew extends Objective {
 				block = entity.world.getType(next.down()).getBlock();
 				if (block == Blocks.AIR || !block.getBlockData().getMaterial().isSolid()
 						|| block.getBlockData().getMaterial().isReplaceable()) {
-					entity.world.setTypeAndData(next.down(), Blocks.DIAMOND_BLOCK.getBlockData(), 3);
 					BlockPosition pos = next;
-					for (final EnumDirection direction : ObjectiveCutTreesNew.HORIZONTAL_DIRECTIONS) {
+					for (final EnumDirection direction : ObjectiveCutTrees.HORIZONTAL_DIRECTIONS) {
 						block = entity.world.getType(pos = pos.shift(direction)).getBlock();
 						if (block != Blocks.AIR && block.getBlockData().getMaterial().isSolid()) {
 							final boolean success = entity.getNavigation().a(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ()
 									+ 0.5, 0.2);
 							if (success) {
-								Debug.b("\u00a7aSuccess");
 								return;
-							} else {
-								Debug.b("Aw");
 							}
 						}
 					}
@@ -167,7 +164,6 @@ public class ObjectiveCutTreesNew extends Objective {
 						this.treeBlocks[i] = null;
 						this.pathfinding = false;
 						final IBlockData block = entity.world.getType(next);
-						block.getBlock().dropNaturally(entity.world, next, block, 1.0F, 0);
 						entity.getInventory().addItem(new ItemStack(Material.LOG, 1, (short) block.getBlock().toLegacyData(block)));
 						entity.world.setTypeAndData(next, Blocks.AIR.getBlockData(), 3);
 						final long currentTime = System.currentTimeMillis();
@@ -273,7 +269,7 @@ public class ObjectiveCutTreesNew extends Objective {
 	}
 
 	public Set<BlockPosition> recursiveGetBlocks(final World world, final BlockPosition pos, final Set<BlockPosition> set) {
-		for (final EnumDirection direction : ObjectiveCutTreesNew.LOOKUP_DIRECTIONS) {
+		for (final EnumDirection direction : ObjectiveCutTrees.LOOKUP_DIRECTIONS) {
 			final BlockPosition shifted = pos.shift(direction);
 			if (!set.contains(shifted) && world.getType(shifted).getBlock() == Blocks.LOG) {
 				set.add(shifted);
@@ -293,7 +289,7 @@ public class ObjectiveCutTreesNew extends Objective {
 		this.reset();
 		final Human entity = this.human;
 		final WorldServer world = (WorldServer) entity.getWorld();
-		final int radius = ObjectiveCutTreesNew.SEARCH_RADIUS;
+		final int radius = ObjectiveCutTrees.SEARCH_RADIUS;
 		final int yRad = radius / 3;
 		Label_001:
 		{
