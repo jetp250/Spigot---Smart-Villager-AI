@@ -11,12 +11,6 @@ import me.jetp250.goapimpl.utilities.NMSUtils.Type;
 
 public class GOAPImplMain extends JavaPlugin {
 
-	private static GOAPImplMain PLUGIN;
-
-	public static GOAPImplMain getPlugin() {
-		return GOAPImplMain.PLUGIN;
-	}
-
 	@Override
 	public void onLoad() {
 		NMSUtils.registerEntity("human", Type.VILLAGER, Human.class, false);
@@ -25,7 +19,6 @@ public class GOAPImplMain extends JavaPlugin {
 
 	@Override
 	public void onEnable() {
-		GOAPImplMain.PLUGIN = this;
 		this.getCommand("village").setExecutor(new VillageCommand());
 	}
 
