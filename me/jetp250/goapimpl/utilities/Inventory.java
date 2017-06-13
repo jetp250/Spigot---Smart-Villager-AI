@@ -15,15 +15,13 @@ public interface Inventory<E> extends Iterable<E> {
 
 	public boolean addItem(final E item);
 
-	public boolean addItem(final E item, final boolean resize);
-
 	public boolean addAll(@SuppressWarnings("unchecked") final E... items);
 
 	public boolean addAll(final Collection<E> collection);
 
-	public boolean setItem(final int index, final E stack);
+	public void setItem(final int index, final E stack);
 
-	public int size();
+	public int getSize();
 
 	public boolean replaceFirst(final @Nullable E type, final E replacement);
 
@@ -43,15 +41,15 @@ public interface Inventory<E> extends Iterable<E> {
 
 	public int emptySlots();
 
-	public boolean remove(final int index);
+	public void remove(final int index);
 
-	public boolean remove(final E item);
+	public void remove(final E item);
 
-	public boolean remove(final E type, final int amount);
+	public void remove(final E type, final int amount);
 
-	public boolean remove(final int index, final int amount);
+	public void remove(final int index, final int amount);
 
-	public boolean removeAll(final E item);
+	public void removeAll(final E item);
 
 	public void removeIf(final Predicate<? super E> predicate);
 
@@ -70,10 +68,6 @@ public interface Inventory<E> extends Iterable<E> {
 	public boolean containsAtLeast(final int amount, final E type);
 
 	public List<E> getAllOfType(final E type);
-
-	public void resize(final int rows);
-
-	public void resize(final int rows, final boolean keepContents);
 
 	public void sort(final @Nullable Comparator<E> comparator);
 
