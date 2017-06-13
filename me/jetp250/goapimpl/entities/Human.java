@@ -3,17 +3,20 @@ package me.jetp250.goapimpl.entities;
 import java.util.List;
 import java.util.Random;
 
-import org.bukkit.Bukkit;
 import org.bukkit.craftbukkit.v1_12_R1.CraftServer;
 import org.bukkit.craftbukkit.v1_12_R1.entity.CraftVillager;
 import org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason;
+import org.bukkit.event.entity.EntityTargetEvent.TargetReason;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
 
+import me.jetp250.goapimpl.general.CustomInventory;
 import me.jetp250.goapimpl.general.GOAPController;
 import me.jetp250.goapimpl.general.Village;
+import me.jetp250.goapimpl.objectives.Objective.Priority;
 import me.jetp250.goapimpl.objectives.Objectives;
 import me.jetp250.goapimpl.objectives.Objectives.WeightedObjectiveList;
-import me.jetp250.goapimpl.utilities.Debug;
+import me.jetp250.goapimpl.objectives.common.ObjectiveAttackEntity;
 import me.jetp250.goapimpl.utilities.MathHelper;
 import net.minecraft.server.v1_12_R1.BlockPosition;
 import net.minecraft.server.v1_12_R1.DifficultyDamageScaler;
@@ -21,11 +24,13 @@ import net.minecraft.server.v1_12_R1.Entity;
 import net.minecraft.server.v1_12_R1.EntityArmorStand;
 import net.minecraft.server.v1_12_R1.EntityEvoker;
 import net.minecraft.server.v1_12_R1.EntityHuman;
+import net.minecraft.server.v1_12_R1.EntityLiving;
 import net.minecraft.server.v1_12_R1.EntityMonster;
 import net.minecraft.server.v1_12_R1.EntityVex;
 import net.minecraft.server.v1_12_R1.EntityVillager;
 import net.minecraft.server.v1_12_R1.EntityVindicator;
 import net.minecraft.server.v1_12_R1.EnumHand;
+import net.minecraft.server.v1_12_R1.GenericAttributes;
 import net.minecraft.server.v1_12_R1.GroupDataEntity;
 import net.minecraft.server.v1_12_R1.PathfinderGoalAvoidTarget;
 import net.minecraft.server.v1_12_R1.PathfinderGoalFloat;
@@ -43,7 +48,7 @@ import net.minecraft.server.v1_12_R1.World;
 public class Human extends EntityVillager {
 
 	private Village village;
-	private final Inventory inventory;
+	private final CustomInventory inventory;
 	private BlockPosition interest;
 	private final VillagerType type;
 	private final GOAPController controller;
@@ -54,9 +59,17 @@ public class Human extends EntityVillager {
 		this.aP();
 		this.type = VillagerType.LUMBERJACK; //VillagerType.pickRandom(this.random);
 		final WeightedObjectiveList objectives = this.type.getObjectives();
-		this.controller = new GOAPController(this, this.type.maxObjectives, objectives);
 		this.entity = new CraftHuman(this.world.getServer(), this);
-		this.inventory = Bukkit.createInventory(this.entity, 36, this.getName());
+		this.inventory = new CustomInventory(this.getBukkitEntity(), 36) {
+			@Override
+			public void setItem(int index, ItemStack item) {
+				super.setItem(index, item);
+				if (item != null && !item.getType().isBlock() && !item.getType().isFuel()) {
+					Human.this.getController().getEquipment().checkInventory();
+				}
+			}
+		};
+		this.controller = new GOAPController(this, this.type.maxObjectives, objectives);
 		if (objectives.length() != 0) {
 			int amount = this.random.nextInt(objectives.length());
 			if (amount == 0) {
@@ -73,13 +86,43 @@ public class Human extends EntityVillager {
 	}
 
 	@Override
+	protected void initAttributes() {
+		super.initAttributes();
+		this.getAttributeMap().b(GenericAttributes.ATTACK_DAMAGE).setValue(random.nextDouble() * 0.25 + 1.5);
+	}
+
+	@Override
 	public void B_() {
 		super.B_();
 		if (this.ticksLived % 5 == 0) {
 			this.world.methodProfiler.a("human update tick");
 			this.controller.update();
-			if (this.ticksLived % 40 == 0) {
-				this.aP();
+			if (this.ticksLived % 10 == 0) {
+				if (this.getGoalTarget() == null) {
+					final List<Entity> nearby = this.world.getEntities(this, this.getBoundingBox().grow(15, 10, 15), (
+							e) -> e instanceof EntityMonster);
+					if (!nearby.isEmpty()) {
+						Entity nearest = null;
+						double distance = Double.MAX_VALUE;
+						for (Entity entity : nearby) {
+							final double dist = entity.h(this);
+							if (dist < distance) {
+								nearest = entity;
+								distance = dist;
+							}
+						}
+						this.setGoalTarget((EntityLiving) nearest, TargetReason.CLOSEST_ENTITY, true);
+					}
+				}
+				if (this.getGoalTarget() != null && !(this.controller.currentObjective() instanceof ObjectiveAttackEntity)) {
+					final EntityLiving target = this.getGoalTarget();
+					if (target instanceof EntityMonster && this.getEntitySenses().a(target)) {
+						this.getController().setCurrentObjective(new ObjectiveAttackEntity(Priority.HIGHEST, this, (EntityMonster) target));
+					}
+				}
+				if (this.ticksLived % 4 == 0) {
+					this.aP();
+				}
 			}
 			this.world.methodProfiler.b();
 		}
@@ -97,7 +140,7 @@ public class Human extends EntityVillager {
 			final Village nearest = Village.getNearestVillage(this.locX, this.locZ);
 			if (nearest != null) {
 				final double dSqr = MathHelper.distSqr(nearest.getX(), nearest.getZ(), this.locX, this.locZ);
-				if (dSqr < 2000) { // 10000
+				if (dSqr < 2000) {
 					this.village = nearest;
 					final boolean success = this.getNavigation().a(nearest.getX(), this.world.c(nearest.getX(), nearest.getZ()), nearest.getZ(), 1F);
 					if (!success) {
@@ -171,7 +214,7 @@ public class Human extends EntityVillager {
 		return this.entity;
 	}
 
-	public Inventory getInventory() {
+	public CustomInventory getInventory() {
 		return this.inventory;
 	}
 
@@ -187,24 +230,14 @@ public class Human extends EntityVillager {
 		this.goalSelector.a(3, new PathfinderGoalRestrictOpenDoor(this));
 		this.goalSelector.a(4, new PathfinderGoalOpenDoor(this, true));
 		this.goalSelector.a(5, new PathfinderGoalMoveTowardsRestriction(this, 0.6));
-		//		this.goalSelector.a(5, new PathfinderGoalMoveTowardsRestriction(this, 1.0D));
-		//		this.goalSelector.a(6, new PathfinderGoalMakeLove(this));
-		//		this.goalSelector.a(8, new PathfinderGoalVillagerFarm(this, 0.6));
-		//		this.goalSelector.a(9, new PathfinderGoalInteract(this, EntityHuman.class, 3.0f, 1.0f));
 		this.goalSelector.a(9, new PathfinderGoalInteract(this, Human.class, 3.0f, 1.0f));
 		this.goalSelector.a(9, new PathfinderGoalInteractVillagers(this));
-		//		this.goalSelector.a(9, new PathfinderGoalRandomStrollLand(this, 0.6));
-		//		this.goalSelector.a(10, new PathfinderGoalLookAtPlayer(this, EntityInsentient.class, 8.0f));
 		this.targetSelector.a(2, new PathfinderGoalNearestAttackableTarget<>(this, EntityMonster.class, true));
 	}
 
 	@Override
 	public boolean a(final EntityHuman entityhuman, final EnumHand enumhand) {
-		//		if (this.getInventory().firstEmpty() > 1) {
-		//			this.getInventory().sort((o1, o2) -> o1 == null && o2 == null ? 0 : o1 == null ? 1 : -1);
-		//		}
 		entityhuman.getBukkitEntity().openInventory(this.getInventory());
-		//		entityhuman.getBukkitEntity().openInventory(this.getInventory().convertToBukkit(entityhuman.getBukkitEntity(), this.getName()));
 		return false;
 	}
 
@@ -271,8 +304,7 @@ public class Human extends EntityVillager {
 
 		@Override
 		public Inventory getInventory() {
-			Debug.a("Called getInventory()");
-			return this.human.getInventory();//.convertToBukkit(this, human.getName());
+			return this.human.getInventory();
 		}
 
 	}
