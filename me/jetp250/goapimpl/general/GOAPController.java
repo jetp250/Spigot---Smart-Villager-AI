@@ -6,34 +6,53 @@ import java.util.function.Predicate;
 
 import javax.annotation.Nullable;
 
+import org.bukkit.Bukkit;
+import org.bukkit.craftbukkit.v1_12_R1.inventory.CraftItemStack;
+import org.bukkit.event.entity.EntityCombustByEntityEvent;
+import org.bukkit.inventory.ItemStack;
+
+import me.jetp250.goapimpl.entities.Human;
 import me.jetp250.goapimpl.objectives.Objective;
 import me.jetp250.goapimpl.objectives.Objective.Priority;
 import me.jetp250.goapimpl.objectives.Objectives.WeightedObjectiveList;
+import me.jetp250.goapimpl.utilities.MathHelper;
 import net.minecraft.server.v1_12_R1.BlockPosition;
 import net.minecraft.server.v1_12_R1.Blocks;
-import net.minecraft.server.v1_12_R1.EntityCreature;
+import net.minecraft.server.v1_12_R1.DamageSource;
+import net.minecraft.server.v1_12_R1.EnchantmentManager;
+import net.minecraft.server.v1_12_R1.Entity;
+import net.minecraft.server.v1_12_R1.EntityHuman;
+import net.minecraft.server.v1_12_R1.EntityLiving;
+import net.minecraft.server.v1_12_R1.EnumItemSlot;
+import net.minecraft.server.v1_12_R1.GenericAttributes;
 import net.minecraft.server.v1_12_R1.IBlockData;
+import net.minecraft.server.v1_12_R1.ItemAxe;
+import net.minecraft.server.v1_12_R1.Items;
 
 public class GOAPController {
 
 	private static final Comparator<Objective> OBJECTIVE_PRIORITY_COMPARATOR;
 
-	private final EntityCreature entity;
+	private final Human entity;
 	private final Objective[] objectives;
 	private final WeightedObjectiveList objectiveList;
 	private final Equipment equipment;
 	private Objective currentObjective;
 	private boolean sorted;
 
-	public GOAPController(final EntityCreature entity, final int maxObjectives, final WeightedObjectiveList objectives) {
+	public GOAPController(final Human entity, final int maxObjectives, final WeightedObjectiveList objectives) {
 		this.entity = entity;
 		this.objectives = new Objective[maxObjectives];
-		this.equipment = new Equipment(maxObjectives);
+		this.equipment = new Equipment(maxObjectives, entity.getInventory());
 		this.objectiveList = objectives;
 	}
 
 	public boolean breakBlock(final int x, final int y, final int z, final boolean updatePhysics) {
 		return breakBlock(new BlockPosition(x, y, z), updatePhysics);
+	}
+
+	public Equipment getEquipment() {
+		return this.equipment;
 	}
 
 	public boolean breakBlock(final BlockPosition pos, final boolean updatePhysics) {
@@ -45,11 +64,86 @@ public class GOAPController {
 			entity.lastPitch = -80F;
 			entity.pitch = entity.lastPitch;
 			entity.getControllerLook().a(pos.getX(), entity.locX - 4, pos.getZ(), 30, 30);
+			final ToolType toolType = ToolType.getToolFor(type.getBlock());
+			if (toolType != null) {
+				final ItemStack tool = this.equipment.getTool(toolType);
+				if (tool != null) {
+					tool.setDurability((short) (tool.getDurability() + 1));
+					if (tool.getDurability() <= 0) {
+						this.equipment.update();
+					}
+				}
+			}
 			entity.world.methodProfiler.b();
 			return true;
 		}
 		entity.world.methodProfiler.b();
 		return false;
+	}
+
+	public void attack(final EntityLiving target) {
+		if (target == null) {
+			return;
+		}
+		final ItemStack weapon = this.equipment.getWeapon(entity.h(target), target);
+		if (weapon == null) {
+			attack(target, 1);
+			return;
+		}
+		this.entity.setSlot(EnumItemSlot.MAINHAND, CraftItemStack.asNMSCopy(weapon));
+		attack(target, this.entity.getAttributeInstance(GenericAttributes.ATTACK_DAMAGE).getValue());
+	}
+
+	public void attack(final Entity target, final ItemStack weapon) {
+		if (weapon == null) {
+			attack(target, 1);
+			return;
+		}
+		weapon.setDurability((short) (weapon.getDurability() + 1));
+		this.entity.setSlot(EnumItemSlot.MAINHAND, CraftItemStack.asNMSCopy(weapon));
+		attack(target, this.entity.getAttributeInstance(GenericAttributes.ATTACK_DAMAGE).getValue());
+	}
+
+	// TODO Clean up directly copied NMS source
+	public void attack(final Entity target, final double damage) {
+		float f = (float) damage;
+		int i = 0;
+		if (target instanceof EntityLiving) {
+			f += EnchantmentManager.a(entity.getItemInMainHand(), ((EntityLiving) target).getMonsterType());
+			i += EnchantmentManager.b(entity);
+		}
+		final boolean flag = target.damageEntity(DamageSource.mobAttack(entity), f);
+		if (flag) {
+			if (i > 0 && target instanceof EntityLiving) {
+				((EntityLiving) target).a(entity, i
+						* 0.5f, MathHelper.sin(entity.yaw * 0.017453292f), -MathHelper.cos(entity.yaw * 0.017453292f));
+				entity.motX *= 0.6;
+				entity.motZ *= 0.6;
+			}
+			final int j = EnchantmentManager.getFireAspectEnchantmentLevel(entity);
+			if (j > 0) {
+				final EntityCombustByEntityEvent combustEvent = new EntityCombustByEntityEvent(entity.getBukkitEntity(), target.getBukkitEntity(), j
+						* 4);
+				Bukkit.getPluginManager().callEvent(combustEvent);
+				if (!combustEvent.isCancelled()) {
+					target.setOnFire(combustEvent.getDuration());
+				}
+			}
+			if (target instanceof EntityHuman) {
+				final EntityHuman targethuman = (EntityHuman) target;
+				final net.minecraft.server.v1_12_R1.ItemStack itemstack = entity.getItemInMainHand();
+				final net.minecraft.server.v1_12_R1.ItemStack itemstack2 = targethuman.isHandRaised() ? targethuman.cJ() : net.minecraft.server.v1_12_R1.ItemStack.a;
+				if (!itemstack.isEmpty() && !itemstack2.isEmpty() && itemstack.getItem() instanceof ItemAxe
+						&& itemstack2.getItem() == Items.SHIELD) {
+					final float f2 = 0.25f + EnchantmentManager.getDigSpeedEnchantmentLevel(entity) * 0.05f;
+					if (entity.getRandom().nextFloat() < f2) {
+						targethuman.getCooldownTracker().a(Items.SHIELD, 100);
+						entity.world.broadcastEntityEffect(targethuman, (byte) 30);
+					}
+				}
+			}
+			//			            entity.a(entity, target);
+		}
 	}
 
 	public void update() {
@@ -101,7 +195,7 @@ public class GOAPController {
 		}
 		for (int i = 0; i < this.objectives.length; ++i) {
 			final Objective toCompare = this.objectives[i];
-			if (objective.getPriority().isHigherOrEqualTo(toCompare.getPriority())) {
+			if (toCompare == null || objective.getPriority().isHigherOrEqualTo(toCompare.getPriority())) {
 				final int index = i;
 				for (i = this.objectives.length - 1; i > index; --i) {
 					this.objectives[i] = this.objectives[i - 1];
@@ -111,6 +205,19 @@ public class GOAPController {
 			}
 		}
 		return false;
+	}
+
+	public void setCurrentObjective(final Objective objective) {
+		final Objective current = this.currentObjective;
+		if (current == null) {
+			return;
+		}
+		current.setPriority(Priority.HIGHEST);
+		this.currentObjective = objective;
+		for (int i = 1; i < this.objectives.length; ++i) {
+			this.objectives[i] = this.objectives[i - 1];
+		}
+		this.objectives[0] = current;
 	}
 
 	public boolean addObjective(final Objective objective, final Priority priority) {
