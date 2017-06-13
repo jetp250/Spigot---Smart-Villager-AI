@@ -1,12 +1,12 @@
 package me.jetp250.goapimpl.general;
 
 import java.lang.reflect.Field;
-import java.util.Arrays;
 
 import javax.annotation.Nullable;
 
 import org.bukkit.Material;
 import org.bukkit.craftbukkit.v1_12_R1.inventory.CraftItemStack;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
 import me.jetp250.goapimpl.utilities.NMSUtils.NBTTagType;
@@ -27,28 +27,33 @@ public class Equipment {
 	private final ItemStack[] weapons;
 	private final ItemStack[] toolbelt;
 	private final double[] damageValues;
+	private final Inventory inv;
 	private final EnumToolMaterial[] toolTypes;
 	private ItemStack itemInHand;
-	private boolean sortWeapons;
 
-	public Equipment(final int maxWeapons) {
-		this.toolbelt = new ItemStack[4];
-		this.toolTypes = new EnumToolMaterial[4];
+	public Equipment(final int maxWeapons, final @Nullable Inventory inventory) {
+		this.toolbelt = new ItemStack[5];
+		this.toolTypes = new EnumToolMaterial[toolbelt.length];
 		this.weapons = new ItemStack[maxWeapons];
+		this.inv = inventory;
 		this.damageValues = new double[weapons.length + toolbelt.length];
 	}
 
 	public boolean addWeapon(final ItemStack weapon, final boolean dropOld) {
+		if (weapon == null) {
+			return false;
+		}
 		int index = -1;
 		for (int i = 0; i < this.weapons.length; ++i) {
-			if (weapons[i] == null) {
+			final ItemStack next = this.weapons[i];
+			if (next != null && next.equals(weapon)) {
+				return false;
+			}
+			if (next == null) {
 				weapons[i] = weapon;
 				index = i;
 				break;
 			}
-		}
-		if (index != -1 || sortWeapons) {
-			Arrays.sort(weapons, (o1, o2) -> ToolType.SWORD.compare(o1.getType(), o2.getType()));
 		}
 		if (index == -1 && dropOld) {
 			index = weapons.length - 1;
@@ -92,10 +97,22 @@ public class Equipment {
 		damageValues[index] = dmg == -1 ? 1 : dmg;
 	}
 
+	private ItemStack setItemInHand(final ItemStack item) {
+		if (item != null && this.inv != null) {
+			final ItemStack[] contents = inv.getContents();
+			for (int i = contents.length - 2; i > -1; --i) {
+				contents[i - 1] = contents[i];
+			}
+			contents[0] = item;
+			this.inv.setContents(contents);
+		}
+		return item;
+	}
+
 	public ItemStack getWeapon(final double distanceSquared, final @Nullable EntityLiving target) {
 		if (this.itemInHand != null) {
 			final ItemStack mainHand = this.itemInHand;
-			this.itemInHand = null;
+			this.setItemInHand(null);
 			return mainHand;
 		}
 		if (distanceSquared >= 256) {
@@ -114,21 +131,20 @@ public class Equipment {
 		if (preferred != null) {
 			return preferred;
 		}
-		if (this.toolbelt.length == 0) {
-			return null;
-		}
 		ItemStack tool = this.toolbelt[0];
 		double dmg = -1;
-		for (int i = 0; i < this.toolbelt.length; ++i) {
-			final double next = this.damageValues[i];
-			if (next > dmg) {
-				dmg = next;
-				tool = toolbelt[i];
+		if (this.toolbelt != null) {
+			for (int i = 0; i < this.toolbelt.length; ++i) {
+				final double next = this.damageValues[i];
+				if (toolbelt[i] != null && next > dmg) {
+					dmg = next;
+					tool = toolbelt[i];
+				}
 			}
 		}
 		for (int i = 0; i < this.weapons.length; ++i) {
-			final double next = this.damageValues[i + this.weapons.length];
-			if (next > dmg) {
+			final double next = this.damageValues[i + this.toolbelt.length - 1];
+			if (weapons[i] != null && next > dmg) {
 				dmg = next;
 				tool = weapons[i];
 			}
@@ -158,16 +174,16 @@ public class Equipment {
 
 	@Nullable
 	public ItemStack getStrongestWeapon() {
-		return this.itemInHand = weapons[0];
+		return this.setItemInHand(weapons[0]);
 	}
 
 	@Nullable
 	public ItemStack getToolFor(final Block block) {
 		final ToolType type = ToolType.getToolFor(block);
 		if (type != null) {
-			return this.itemInHand = this.toolbelt[type.ordinal()];
+			return this.setItemInHand(this.toolbelt[type.ordinal()]);
 		}
-		return this.itemInHand = null;
+		return this.setItemInHand(null);
 	}
 
 	@Nullable
@@ -186,7 +202,7 @@ public class Equipment {
 	}
 
 	public ItemStack getTool(final ToolType type) {
-		return this.itemInHand = this.toolbelt[type.ordinal()];
+		return this.setItemInHand(this.toolbelt[type.ordinal()]);
 	}
 
 	public EnumToolMaterial getToolMaterial(final ToolType type) {
@@ -199,6 +215,111 @@ public class Equipment {
 			return true;
 		}
 		return ToolType.PICKAXE.canBreak(block, this.getToolMaterial(ToolType.PICKAXE));
+	}
+
+	public int update() {
+		int removed = 0;
+		for (int i = 0; i < this.toolbelt.length; ++i) {
+			final ItemStack next = this.toolbelt[i];
+			if (next != null && next.getDurability() <= 0) {
+				this.toolbelt[i] = null;
+				for (final int j = i + 1; j < toolbelt.length; ++i) {
+					final ItemStack shift = this.toolbelt[j];
+					if (shift == null) {
+						break;
+					}
+					this.toolbelt[j - 1] = shift;
+				}
+				removed++;
+			}
+		}
+		for (int i = 0; i < this.weapons.length; ++i) {
+			final ItemStack next = this.weapons[i];
+			if (next != null && next.getDurability() <= 0) {
+				this.weapons[i] = null;
+				for (final int j = i + 1; j < weapons.length; ++i) {
+					final ItemStack shift = this.weapons[j];
+					if (shift == null) {
+						break;
+					}
+					this.weapons[j - 1] = shift;
+				}
+				removed++;
+			}
+		}
+		return removed;
+	}
+
+	public boolean containsTool(final ItemStack tool) {
+		if (tool == null) {
+			for (int i = 0; i < this.toolbelt.length; ++i) {
+				if (toolbelt[i] == null) {
+					return true;
+				}
+			}
+			return false;
+		}
+		for (int i = 0; i < this.toolbelt.length; ++i) {
+			final ItemStack next = this.toolbelt[i];
+			if (tool.equals(next)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public boolean containsWeapon(final ItemStack weapon) {
+		if (weapon == null) {
+			for (int i = 0; i < this.weapons.length; ++i) {
+				if (weapons[i] == null) {
+					return true;
+				}
+			}
+			return false;
+		}
+		for (int i = 0; i < this.weapons.length; ++i) {
+			final ItemStack next = this.weapons[i];
+			if (weapon.equals(next)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public boolean contains(final ItemStack item) {
+		if (item == null) {
+			return false;
+		}
+		return ToolType.ofItem(item) == ToolType.SWORD ? containsWeapon(item) : containsTool(item);
+	}
+
+	public void checkInventory() {
+		if (this.inv == null) {
+			return;
+		}
+		final ItemStack[] contents = this.inv.getContents();
+		for (int i = 0; i < contents.length; ++i) {
+			final ItemStack next = contents[i];
+			if (next != null) {
+				final ToolType type = ToolType.ofItem(next);
+				if (type == null) {
+					continue;
+				}
+				if (type == ToolType.SWORD) {
+					this.addWeapon(next, true);
+					continue;
+				}
+				final ItemStack previous = this.getTool(type);
+				if (previous == null) {
+					this.setTool(type, next);
+					continue;
+				}
+				final int comparison = type.compare(next.getType(), previous.getType());
+				if (comparison == 1 || (comparison == 0 && next.getDurability() > previous.getDurability())) {
+					this.setTool(type, next);
+				}
+			}
+		}
 	}
 
 	static {
