@@ -3,6 +3,7 @@ package me.jetp250.goapimpl.objectives;
 import java.util.Random;
 
 import me.jetp250.goapimpl.objectives.Objective.Priority;
+import me.jetp250.goapimpl.objectives.lumberjack.ObjectiveCutTrees;
 import net.minecraft.server.v1_12_R1.EntityCreature;
 
 public enum Objectives {
@@ -10,7 +11,7 @@ public enum Objectives {
 	CUT_TREES(Priority.NORMAL) {
 		@Override
 		public Objective create(final EntityCreature creature) {
-			return new ObjectiveCutTreesNew(this.getPriority(), creature);
+			return new ObjectiveCutTrees(this.getPriority(), creature);
 		}
 	};
 
@@ -24,14 +25,6 @@ public enum Objectives {
 
 	public Priority getPriority() {
 		return this.priority;
-	}
-
-	public static enum DataTypes {
-		AMOUNT(0);
-
-		private DataTypes(final int index) {
-		}
-
 	}
 
 	public static class WeightedObjectiveList {
