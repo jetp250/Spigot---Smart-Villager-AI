@@ -13,7 +13,6 @@ import org.bukkit.inventory.ItemStack;
 import me.jetp250.goapimpl.entities.Human;
 import me.jetp250.goapimpl.objectives.Objective;
 import me.jetp250.goapimpl.objectives.common.ObjectiveBuildPath;
-import me.jetp250.goapimpl.utilities.Debug;
 import me.jetp250.goapimpl.utilities.MathHelper;
 import net.minecraft.server.v1_12_R1.Block;
 import net.minecraft.server.v1_12_R1.BlockPosition;
@@ -38,7 +37,6 @@ public class ObjectiveCutTrees extends Objective {
 	private int maxTicks;
 	private long lastPlace;
 	private BlockPosition[] treeBlocks;
-	private BlockPosition[] path;
 	private List<BlockPosition> pillar;
 	private Objective ordered;
 	private final Human human;
@@ -50,23 +48,11 @@ public class ObjectiveCutTrees extends Objective {
 		this.human = entity instanceof Human ? (Human) entity : null;
 	}
 
+	@SuppressWarnings("deprecation")
 	@Override
 	public void update() {
 		if (ordered != null && ordered.completed()) {
 			ordered = null;
-		}
-		if (this.path != null) {
-			if (this.ticks % 2 != 0) {
-				return;
-			}
-			for (int i = 0; i < this.path.length; ++i) {
-				final BlockPosition next = this.path[i];
-				if (next != null) {
-					this.path[i] = null;
-
-				}
-			}
-			return;
 		}
 		if (this.tree == null) {
 			return;
@@ -78,9 +64,6 @@ public class ObjectiveCutTrees extends Objective {
 				return;
 			}
 			entity.getNavigation().p();
-			entity.lastPitch = -80F;
-			entity.pitch = entity.lastPitch;
-			entity.getControllerLook().a(this.tree.getX(), entity.locX - 2, this.tree.getZ(), 30, 30);
 			entity.motX = 0;
 			entity.motZ = 0;
 			for (int i = this.pillar.size() - 1; i > -1; --i) {
@@ -105,7 +88,7 @@ public class ObjectiveCutTrees extends Objective {
 						}
 					}
 				}
-				entity.world.setTypeAndData(next, Blocks.AIR.getBlockData(), 3);
+				entity.getController().breakBlock(next, true);
 				this.pillar.remove(i);
 				return;
 			}
@@ -128,7 +111,10 @@ public class ObjectiveCutTrees extends Objective {
 							this.treeBlocks[i] = null;
 							continue;
 						}
-						if (next.getY() > entity.getY() + 2) {
+						final double distSqr = MathHelper.distSqr(next.getX(), next.getZ(), entity.locX, entity.locZ);
+						if (distSqr > 6) {
+							this.tryNavigateTo(next, this.nearestAir != null ? nearestAir : tree, 4);
+						} else if (next.getY() > entity.getY() + 2) {
 							if (MathHelper.distSqr(next.getX(), next.getZ(), entity.locX, entity.locZ) > 1) {
 								this.tryNavigateTo(next, this.tree, 4);
 							} else if (!this.pathfinding && this.pillar != null && !this.pillar.isEmpty()) {
@@ -150,7 +136,6 @@ public class ObjectiveCutTrees extends Objective {
 							if ((block = entity.world.getType(eLoc).getBlock()) != Blocks.AIR
 									&& block.getBlockData().getMaterial().isSolid()
 									&& !block.getBlockData().getMaterial().isReplaceable()) {
-								Debug.b("Centering");
 								entity.setPosition(eLoc.getX() + 0.5D, eLoc.getY() + 1, eLoc.getZ() + 0.5D);
 								return;
 							}
@@ -158,14 +143,11 @@ public class ObjectiveCutTrees extends Objective {
 							entity.world.setTypeAndData(eLoc, Blocks.DIRT.getBlockData(), 3);
 							return;
 						}
-						entity.lastPitch = 80;
-						entity.pitch = 80;
-						entity.getControllerLook().a(this.tree.getX(), entity.locX - 2, this.tree.getZ(), 30, 30);
 						this.treeBlocks[i] = null;
 						this.pathfinding = false;
 						final IBlockData block = entity.world.getType(next);
-						entity.getInventory().addItem(new ItemStack(Material.LOG, 1, (short) block.getBlock().toLegacyData(block)));
-						entity.world.setTypeAndData(next, Blocks.AIR.getBlockData(), 3);
+						entity.getInventory().addItem(new ItemStack(Material.getMaterial(Block.getId(block.getBlock())), 1, (short) block.getBlock().toLegacyData(block)));
+						entity.getController().breakBlock(next, true);
 						final long currentTime = System.currentTimeMillis();
 						this.maxTicks += (currentTime - this.lastPlace) / 50;
 						this.lastPlace = currentTime;
@@ -199,9 +181,7 @@ public class ObjectiveCutTrees extends Objective {
 					final BlockPosition ePos = new BlockPosition(entity).down();
 					final Block block = entity.world.getType(ePos).getBlock();
 					if (block == Blocks.LEAVES || block == Blocks.LOG || block == Blocks.LOG2) {
-						entity.world.setTypeAndData(ePos, Blocks.AIR.getBlockData(), 3);
-						entity.pitch = -80F;
-						entity.lastPitch = -80F;
+						entity.getController().breakBlock(ePos, true);
 					}
 				} else {
 					if (d < 40 && this.pathfinding && !entity.getNavigation().o()) {
@@ -230,12 +210,7 @@ public class ObjectiveCutTrees extends Objective {
 			success |= this.pathfinding = entity.getNavigation().a(alternative.getX(), entity.getY(), alternative.getZ(), 0.45);
 		}
 		if (!success && MathHelper.distSqr(target.getX(), target.getZ(), entity.locX, entity.locZ) > 1) {
-			final Priority priority = Priority.HIGH;
-			this.ordered = new ObjectiveBuildPath(priority, this.getEntity(), Blocks.DIRT, target);
-			this.human.getController().addObjective(this.ordered);
-			//			this.ordered = new ObjectiveBuildPath(Priority.HIGH, human, Blocks.DIRT, target);
-			//			human.getController().addObjective(new ObjectiveBuildPath(Priority.HIGH, human, Blocks.DIRT, target));
-			//			entity.setPosition(target.getX() + 0.5, entity.locY, target.getZ() + 0.5);
+			this.human.getController().addObjective(this.ordered = new ObjectiveBuildPath(Priority.HIGH, this.getEntity(), Blocks.DIRT, target));
 		}
 		if (!success && --attempts > -1) {
 			this.tryNavigateTo(target, alternative, attempts);
@@ -344,7 +319,6 @@ public class ObjectiveCutTrees extends Objective {
 		this.pillar = null;
 		this.treeBlocks = null;
 		this.nearestAir = null;
-		this.path = null;
 		this.completed = false;
 	}
 
