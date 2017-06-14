@@ -175,9 +175,6 @@ public enum ToolType {
 
 		@Override
 		protected boolean canBreak0(final Block type, final EnumToolMaterial etm) {
-			if (type == Blocks.OBSIDIAN) {
-
-			}
 			return false;
 		}
 
@@ -253,7 +250,8 @@ public enum ToolType {
 
 	public static ToolType getToolFor(final Block block) {
 		final net.minecraft.server.v1_12_R1.Material mat = block.getBlockData().getMaterial();
-		if (mat == net.minecraft.server.v1_12_R1.Material.WOOD || mat == net.minecraft.server.v1_12_R1.Material.PUMPKIN
+		if (block == Blocks.LOG || block == Blocks.LOG2 || mat == net.minecraft.server.v1_12_R1.Material.WOOD
+				|| mat == net.minecraft.server.v1_12_R1.Material.PUMPKIN
 				|| mat == net.minecraft.server.v1_12_R1.Material.BANNER) {
 			return ToolType.AXE;
 		}
