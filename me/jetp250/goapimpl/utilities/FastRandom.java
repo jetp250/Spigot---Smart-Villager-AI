@@ -121,7 +121,7 @@ public final class FastRandom extends Random {
 		if (min == max) {
 			return min;
 		}
-		if (min >= max) {
+		if (min > max) {
 			throw new IllegalArgumentException("bound must be greater than origin");
 		}
 		return this.nextFloat() * (max - min) + min;
