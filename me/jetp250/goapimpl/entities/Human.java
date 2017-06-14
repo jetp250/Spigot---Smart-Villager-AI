@@ -34,12 +34,12 @@ import net.minecraft.server.v1_12_R1.GenericAttributes;
 import net.minecraft.server.v1_12_R1.GroupDataEntity;
 import net.minecraft.server.v1_12_R1.PathfinderGoalAvoidTarget;
 import net.minecraft.server.v1_12_R1.PathfinderGoalFloat;
+import net.minecraft.server.v1_12_R1.PathfinderGoalHurtByTarget;
 import net.minecraft.server.v1_12_R1.PathfinderGoalInteract;
 import net.minecraft.server.v1_12_R1.PathfinderGoalInteractVillagers;
 import net.minecraft.server.v1_12_R1.PathfinderGoalLookAtTradingPlayer;
 import net.minecraft.server.v1_12_R1.PathfinderGoalMoveIndoors;
 import net.minecraft.server.v1_12_R1.PathfinderGoalMoveTowardsRestriction;
-import net.minecraft.server.v1_12_R1.PathfinderGoalNearestAttackableTarget;
 import net.minecraft.server.v1_12_R1.PathfinderGoalOpenDoor;
 import net.minecraft.server.v1_12_R1.PathfinderGoalRestrictOpenDoor;
 import net.minecraft.server.v1_12_R1.PathfinderGoalTradeWithPlayer;
@@ -57,7 +57,7 @@ public class Human extends EntityVillager {
 	public Human(final World world) {
 		super(world);
 		this.aP();
-		this.type = VillagerType.LUMBERJACK; //VillagerType.pickRandom(this.random);
+		this.type = VillagerType.LUMBERJACK;
 		final WeightedObjectiveList objectives = this.type.getObjectives();
 		this.entity = new CraftHuman(this.world.getServer(), this);
 		this.inventory = new CustomInventory(this.getBukkitEntity(), 36) {
@@ -94,13 +94,16 @@ public class Human extends EntityVillager {
 	@Override
 	public void B_() {
 		super.B_();
+		if (this.dead) {
+			return;
+		}
 		if (this.ticksLived % 5 == 0) {
 			this.world.methodProfiler.a("human update tick");
 			this.controller.update();
 			if (this.ticksLived % 10 == 0) {
 				if (this.getGoalTarget() == null) {
 					final List<Entity> nearby = this.world.getEntities(this, this.getBoundingBox().grow(15, 10, 15), (
-							e) -> e instanceof EntityMonster);
+							e) -> !e.dead && e instanceof EntityMonster);
 					if (!nearby.isEmpty()) {
 						Entity nearest = null;
 						double distance = Double.MAX_VALUE;
@@ -116,7 +119,9 @@ public class Human extends EntityVillager {
 				}
 				if (this.getGoalTarget() != null && !(this.controller.currentObjective() instanceof ObjectiveAttackEntity)) {
 					final EntityLiving target = this.getGoalTarget();
-					if (target instanceof EntityMonster && this.getEntitySenses().a(target)) {
+					if (target.dead) {
+						this.setGoalTarget(null, TargetReason.TARGET_DIED, true);
+					} else if (target instanceof EntityMonster && this.getEntitySenses().a(target)) {
 						this.getController().setCurrentObjective(new ObjectiveAttackEntity(Priority.HIGHEST, this, (EntityMonster) target));
 					}
 				}
@@ -156,7 +161,6 @@ public class Human extends EntityVillager {
 					final Human villager = (Human) entity;
 					if (villager.getVillage() != null) {
 						this.village = villager.getVillage();
-						entity.setCustomName("VILLAGE#" + this.village.getId());
 						final boolean success = this.getNavigation().a(nearest.getX(), this.world.c(nearest.getX(), nearest.getZ()), nearest.getZ(), 1F);
 						if (!success) {
 							this.interest = new BlockPosition(this.village.getX(), this.world.c(this.village.getX(), this.village.getZ()), this.village.getZ());
@@ -178,9 +182,9 @@ public class Human extends EntityVillager {
 					final BlockPosition c = new BlockPosition(cx, y, cz);
 					this.village = new Village(c, this.world);
 					for (final Entity entity : nearby) {
-						((Human) entity).village = this.village;
-						entity.setCustomName("VILLAGE#" + this.village.getId());
-						((Human) entity).getNavigation().a(cx, y, cz, 1);
+						final Human human = (Human) entity;
+						human.village = this.village;
+						human.getNavigation().a(cx, y, cz, 1);
 					}
 					final EntityArmorStand marker = new EntityArmorStand(this.world);
 					marker.setPosition(cx, y + 10, cz);
@@ -232,7 +236,7 @@ public class Human extends EntityVillager {
 		this.goalSelector.a(5, new PathfinderGoalMoveTowardsRestriction(this, 0.6));
 		this.goalSelector.a(9, new PathfinderGoalInteract(this, Human.class, 3.0f, 1.0f));
 		this.goalSelector.a(9, new PathfinderGoalInteractVillagers(this));
-		this.targetSelector.a(2, new PathfinderGoalNearestAttackableTarget<>(this, EntityMonster.class, true));
+		this.targetSelector.a(2, new PathfinderGoalHurtByTarget(this, false, new Class[0]));
 	}
 
 	@Override
